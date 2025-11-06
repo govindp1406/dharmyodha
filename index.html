@@ -4,1024 +4,1542 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dharma Yodha Database</title>
+  
   <!-- 1. Load Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 2. Load Firebase 11.6.1 SDKs -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection, query, setLogLevel, updateDoc, getDoc, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    // Make functions globally accessible for inline event handlers
-    window.firebase = {
-      initializeApp,
-      getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-      getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection, query, setLogLevel, updateDoc, getDoc, getDocs, setDoc
-    };
-  </script>
-  <!-- 3. Load jsPDF for PDF generation -->
+  
+  <!-- 2. Load React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  
+  <!-- 3. Load Babel (to compile JSX in the browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- 4. Load prop-types (Recharts dependency) -->
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  
+  <!-- 5. Load Recharts (for charts) - UPDATED CDN LINK -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.7/Recharts.min.js"></script>
+  
+  <!-- 6. Load jsPDF (for PDF export) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <style>
-    /* Inter font (Tailwind default) */
-    @import url('https://rsms.me/inter/inter.css');
-    html { font-family: 'Inter', sans-serif; }
-    /* Fix for scrollbar on form */
-    .form-scrollbar {
-      max-height: 70vh;
-      overflow-y: auto;
-    }
-  </style>
-</head>
-<body class="antialiased text-gray-800 font-inter min-h-screen bg-orange-50 p-4 md:p-8">
-
-  <!-- Main App Container -->
-  <div id="app-root"></div>
-  
-  <!-- Modal Container -->
-  <div id="modal-container" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style="display: none;" onclick="closeModal()">
-    <div id="modal-content" class="bg-white p-6 rounded-xl shadow-lg w-full max-w-md" onclick="event.stopPropagation()">
-      <!-- Modal content will be injected here -->
-    </div>
-  </div>
-
+  <!-- 7. Load Firebase (using a module script to attach to window) -->
   <script type="module">
-    // --- Firebase Imports (from window) ---
-    const { initializeApp } = window.firebase;
-    const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = window.firebase;
-    const { getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection, query, setLogLevel, updateDoc, getDoc, getDocs, setDoc } = window.firebase;
-
-    // --- Firebase Configuration ---
-    const firebaseConfig = JSON.parse(
-      typeof __firebase_config !== 'undefined'
-        ? __firebase_config
-        : '{}'
-    );
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined'
-      ? __initial_auth_token
-      : null;
-
-    // --- Global App State ---
-    let db = null;
-    let auth = null;
-    let userId = null;
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import * as auth from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import * as firestore from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     
-    let yodhas = [];
-    let transactions = [];
-    let districts = [];
-    let states = [];
-    let categories = [];
-    
-    let isLoading = true;
-    let error = '';
-    let searchQuery = '';
-    let currentView = 'database'; // 'database', 'accounts', 'analysis'
-
-    // Modal State
-    let editingYodha = null;
-    let deletingYodhaId = null;
-    let viewingYodha = null;
-    let isManagingDistricts = false;
-    let isManagingStates = false;
-    let isManagingCategories = false;
-
-    // Navigation State
-    let navigationLevel = 'states'; // 'states', 'districts', 'yodhas'
-    let selectedState = null;
-    let selectedDistrict = null;
-
-    // Auth State
-    let isAuthenticated = false;
-    let pinInput = '';
-    let pinError = '';
-    const correctPin = '1406';
-
-    const initialFormData = {
-      yodhaNumber: '', accusedName: '', district: '', village: '', state: '', incidentDate: '', category: '',
-      localKaryakarta: '', mainKaryakarta: '',
-      contactEstablished: '', helpReached: '', deceasedName: '', firRegistered: '', caseDetails: ''
+    // Attach to window object so the Babel script can see them
+    window.firebase = {
+      app: { initializeApp },
+      auth,
+      firestore
     };
+  </script>
+  
+  <!-- Add Inter font for better aesthetics -->
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+
+</head>
+<body class="bg-orange-50">
+  
+  <!-- This is where the React app will be rendered -->
+  <div id="root"></div>
+
+  <!-- 7. Load and run the React Application (as Babel) -->
+  <script type="text/babel">
     
-    // --- Icon Components (return SVG strings) ---
-    const TrashIcon = () => `
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" class="w-5 h-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12.54 0c-.27.041-.533.095-.79.157m0 0L5.23 5.337a3.369 3.369 0 0 1-.945-2.268V3c0-.987.89-1.8 2.006-1.8h4.44c1.116 0 2.006.813 2.006 1.8v.069a3.369 3.369 0 0 1-.945 2.268L8.03 5.79m0 0c-.26.062-.52.116-.79.157m6.58-1.5-1.519-.89a1.923 1.923 0 0 0-2.146 0l-1.519.89m13.932 0-1.285.757a1.923 1.923 0 0 1-2.146 0l-1.285-.757m-10.363 0a48.108 48.108 0 0 1 3.478-.397m7.406 0c.27-.041.533.095.79-.157L18.82 5.337a3.369 3.369 0 0 0 .945-2.268V3c0-.987-.89-1.8-2.006-1.8h-4.44c-1.116 0-2.006.813-2.006 1.8v.069a3.369 3.369 0 0 0 .945 2.268l1.716 3.12z" />
-      </svg>`;
-    const PencilIcon = () => `
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" class="w-5 h-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-      </svg>`;
-    const PlusIcon = () => `
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" class="w-5 h-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-      </svg>`;
-    const ShareIcon = () => `
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" class="w-5 h-5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-      </svg>`;
-
-    // --- Template: Form Inputs ---
-    const FormInput = (label, name, value, type = 'text', required = false, placeholder = '', props = '') => `
-      <div>
-        <label for="${name}" class="block text-sm font-medium text-gray-700">${label}</label>
-        <input
-          type="${type}"
-          name="${name}"
-          id="${name}"
-          value="${value}"
-          ${required ? 'required' : ''}
-          placeholder="${placeholder}"
-          ${props}
-          class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-        />
-      </div>`;
+    // --- NEW: Wait for all scripts (React, Recharts, Firebase) to load ---
+    window.addEventListener('load', () => {
     
-    const FormSelect = (label, name, value, required = false, options) => `
-      <div>
-        <label for="${name}" class="block text-sm font-medium text-gray-700">${label}</label>
-        <select
-          name="${name}"
-          id="${name}"
-          ${required ? 'required' : ''}
-          class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-        >
-          ${options.map(opt => `<option value="${opt.value}" ${opt.value === value ? 'selected' : ''}>${opt.label}</option>`).join('')}
-        </select>
-      </div>`;
-
-    const FormTextArea = (label, name, value, placeholder = '', rows = 4) => `
-      <div>
-        <label for="${name}" class="block text-sm font-medium text-gray-700">${label}</label>
-        <textarea
-          name="${name}"
-          id="${name}"
-          rows="${rows}"
-          class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
-          placeholder="${placeholder}"
-        >${value}</textarea>
-      </div>`;
-
-    // --- Template: Yodha Form ---
-    const renderYodhaForm = (initialData, formId, onSubmit, onCancel, isEdit = false) => {
-      const stateOptions = [{ value: '', label: 'Select a state...' }, ...states.map(s => ({ value: s.name, label: s.name }))];
-      const districtOptions = [{ value: '', label: 'Select a district...' }, ...districts.map(d => ({ value: d.name, label: d.name }))];
-      const categoryOptions = [{ value: '', label: 'Select a category...' }, ...categories.map(c => ({ value: c.name, label: c.name }))];
-      const yesNoOptions = [{ value: '', label: 'Select...' }, { value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }];
+      // --- Destructure libraries from the window object ---
+      const { useState, useEffect, useMemo } = React;
+      const { 
+        PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, 
+        BarChart, Bar, XAxis, YAxis, CartesianGrid 
+      } = Recharts;
       
-      return `
-        <form id="${formId}" class="space-y-4 form-scrollbar pr-2">
-          ${FormInput("Yodha Number", "yodhaNumber", initialData.yodhaNumber)}
-          ${FormInput("Accused Name", "accusedName", initialData.accusedName, 'text', true)}
-          
-          <!-- District Select -->
-          <div>
-            <label for="district" class="block text-sm font-medium text-gray-700">District</label>
-            <div class="flex items-center gap-2 mt-1">
-              <select name="district" id="district" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm">
-                ${districtOptions.map(opt => `<option value="${opt.value}" ${opt.value === initialData.district ? 'selected' : ''}>${opt.label}</option>`).join('')}
-              </select>
-              <button type="button" onclick="showManageListModal('districts')" class="flex-shrink-0 p-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500" aria-label="Manage districts">
-                ${PlusIcon()}
-              </button>
-            </div>
-          </div>
-          
-          ${FormInput("Village", "village", initialData.village)}
-          
-          <!-- State Select -->
-          <div>
-            <label for="state" class="block text-sm font-medium text-gray-700">State</label>
-            <div class="flex items-center gap-2 mt-1">
-              <select name="state" id="state" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm">
-                ${stateOptions.map(opt => `<option value="${opt.value}" ${opt.value === initialData.state ? 'selected' : ''}>${opt.label}</option>`).join('')}
-              </select>
-              <button type="button" onclick="showManageListModal('states')" class="flex-shrink-0 p-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500" aria-label="Manage states">
-                ${PlusIcon()}
-              </button>
-            </div>
-          </div>
-          
-          ${FormInput("Incident Date", "incidentDate", initialData.incidentDate, 'date')}
+      // Wait for firebase to load
+      const { initializeApp } = window.firebase.app;
+      const { 
+        getAuth, 
+        signInAnonymously, 
+        onAuthStateChanged 
+      } = window.firebase.auth;
+      const { 
+        getFirestore, doc, addDoc, deleteDoc, onSnapshot, 
+        collection, query, setLogLevel, updateDoc, getDoc, getDocs, setDoc
+      } = window.firebase.firestore;
 
-          <!-- Category Select -->
-          <div>
-            <label for="category" class="block text-sm font-medium text-gray-700">Category</label>
-            <div class="flex items-center gap-2 mt-1">
-              <select name="category" id="category" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm">
-                ${categoryOptions.map(opt => `<option value="${opt.value}" ${opt.value === initialData.category ? 'selected' : ''}>${opt.label}</option>`).join('')}
-              </select>
-              <button type="button" onclick="showManageListModal('categories')" class="flex-shrink-0 p-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500" aria-label="Manage categories">
-                ${PlusIcon()}
-              </button>
-            </div>
-          </div>
-          
-          <h3 class="text-lg font-medium text-gray-800 pt-2 border-t mt-4">Karyakarta Details</h3>
-          ${FormInput("Local Karyakarta Name and Number", "localKaryakarta", initialData.localKaryakarta, 'text', false, "e.g., Ramesh Kumar - 98XXXXX")}
-          ${FormInput("Main Karyakarta Name and Number", "mainKaryakarta", initialData.mainKaryakarta, 'text', false, "e.g., Suresh Singh - 97XXXXX")}
-          
-          <h3 class="text-lg font-medium text-gray-800 pt-2 border-t mt-4">Case Status</h3>
-          ${FormSelect("Contact Established", "contactEstablished", initialData.contactEstablished, true, yesNoOptions)}
-          ${FormSelect("Reached Help", "helpReached", initialData.helpReached, true, yesNoOptions)}
-          ${FormSelect("FIR Registered", "firRegistered", initialData.firRegistered, true, yesNoOptions)}
-          ${FormInput("Deceased Name (if any)", "deceasedName", initialData.deceasedName)}
-          ${FormTextArea("Case Details", "caseDetails", initialData.caseDetails, "Describe the case details...")}
-          
-          <div class="flex gap-4 pt-4">
-            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors">
-              ${isEdit ? 'Save Changes' : 'Add Yodha'}
-            </button>
-            ${onCancel ? `<button type="button" onclick="${onCancel}" class="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">Cancel</button>` : ''}
-          </div>
-        </form>
-      `;
-    };
-    
-    // --- Template: Login Screen ---
-    const renderLoginScreen = () => `
-      <div class="flex items-center justify-center min-h-screen bg-orange-50">
-        <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm text-center">
-          <h2 class="text-3xl font-bold text-orange-700 mb-6">Dharma Yodha Database</h2>
-          <p class="text-gray-600 mb-4">Please enter your PIN to continue.</p>
-          <form id="pin-form" class="space-y-4">
-            ${FormInput("PIN", "pin", pinInput, "password", true, "****", `autocomplete="off" pattern="\\d*"`)}
-            ${pinError ? `<p class="text-red-500 text-sm">${pinError}</p>` : ''}
-            <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors">
-              Unlock
-            </button>
-          </form>
-        </div>
-      </div>`;
+      // --- Firebase Configuration ---
+      const firebaseConfig = {
+        apiKey: "AIzaSyA_aKF681FuJdpdkyvdbLRPkQaUKyaRx_8",
+        authDomain: "dharmayodha-c0868.firebaseapp.com",
+        projectId: "dharmayodha-c0868",
+        storageBucket: "dharmayodha-c0868.firebasestorage.app",
+        messagingSenderId: "990159164218",
+        appId: "1:990159164218:web:d87f67ab43796ea4937603",
+        measurementId: "G-P1RW4CNK92"
+      };
 
-    // --- Template: Database View ---
-    const renderDatabaseView = () => {
-      // Data processing for navigation
-      const query = searchQuery.toLowerCase().trim();
-      const stateGroups = {};
-      yodhas.forEach(yodha => {
-        const state = yodha.state || 'Uncategorized';
-        const district = yodha.district || 'Uncategorized';
+      const initialAuthToken = null; // Platform token is not used here
 
-        if (!stateGroups[state]) stateGroups[state] = { count: 0, districts: {} };
-        stateGroups[state].count++;
-        
-        if (!stateGroups[state].districts[district]) stateGroups[state].districts[district] = { count: 0 };
-        stateGroups[state].districts[district].count++;
-      });
+      // --- Helper Icon Components ---
+      const TrashIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12.54 0c-.27.041-.533.095-.79.157m0 0L5.23 5.337a3.369 3.369 0 0 1-.945-2.268V3c0-.987.89-1.8 2.006-1.8h4.44c1.116 0 2.006.813 2.006 1.8v.069a3.369 3.369 0 0 1-.945 2.268L8.03 5.79m0 0c-.26.062-.52.116-.79.157m6.58-1.5-1.519-.89a1.923 1.923 0 0 0-2.146 0l-1.519.89m13.932 0-1.285.757a1.923 1.923 0 0 1-2.146 0l-1.285-.757m-10.363 0a48.108 48.108 0 0 1 3.478-.397m7.406 0c.27-.041.533.095.79-.157L18.82 5.337a3.369 3.369 0 0 0 .945-2.268V3c0-.987-.89-1.8-2.006-1.8h-4.44c-1.116 0-2.006.813-2.006 1.8v.069a3.369 3.369 0 0 0 .945 2.268l1.716 3.12z" />
+        </svg>
+      );
 
-      const statesWithCount = Object.entries(stateGroups)
-        .map(([name, data]) => ({ name, count: data.count, districts: data.districts }))
-        .filter(s => s.name.toLowerCase().includes(query))
-        .sort((a, b) => a.name.localeCompare(b.name));
+      const PencilIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+        </svg>
+      );
 
-      let districtsWithCount = [];
-      if (selectedState && stateGroups[selectedState]) {
-        districtsWithCount = Object.entries(stateGroups[selectedState].districts)
-          .map(([name, data]) => ({ name, count: data.count }))
-          .filter(d => d.name.toLowerCase().includes(query))
-          .sort((a, b) => a.name.localeCompare(b.name));
-      }
-      
-      let yodhasInDistrict = [];
-      if (selectedState && selectedDistrict) {
-        yodhasInDistrict = yodhas.filter(y => {
-          const state = y.state || 'Uncategorized';
-          const district = y.district || 'Uncategorized';
-          if (state !== selectedState || district !== selectedDistrict) return false;
-          if (!query) return true;
-          const searchableText = [y.accusedName, y.yodhaNumber, y.village, y.category, y.localKaryakarta, y.mainKaryakarta, y.deceasedName, y.caseDetails].filter(Boolean).join(' ').toLowerCase();
-          return searchableText.includes(query);
-        });
-      }
+      const PlusIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+        </svg>
+      );
 
-      // Breadcrumbs
-      const Breadcrumbs = () => `
-        <nav class="flex items-center gap-2 text-sm font-medium text-gray-500 mb-4">
-          <button onclick="handleBreadcrumbClick('states')" class="hover:text-orange-600 ${navigationLevel === 'states' ? 'text-orange-600' : ''}">
-            All States
-          </button>
-          ${selectedState ? `
-            <span>&gt;</span>
-            <button onclick="handleBreadcrumbClick('districts')" ${navigationLevel === 'districts' ? 'disabled' : ''} class="hover:text-orange-600 ${navigationLevel === 'districts' ? 'text-orange-600' : ''} ${navigationLevel === 'yodhas' ? '' : 'cursor-default'}">
-              ${selectedState}
-            </button>` : ''}
-          ${selectedDistrict ? `
-            <span>&gt;</span>
-            <span class="text-orange-600">${selectedDistrict}</span>` : ''}
-        </nav>`;
+      const ShareIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+        </svg>
+      );
 
-      // Navigation Cards
-      const NavigationCard = (title, count, onClick) => `
-        <button onclick="${onClick}" class="w-full bg-white p-5 rounded-xl shadow-lg transition-all hover:shadow-md hover:bg-orange-50 flex justify-between items-center text-left">
-          <div><h3 class="text-xl font-bold text-orange-700">${title}</h3></div>
-          <div class="flex items-center gap-2">
-            <span class="px-3 py-1 bg-orange-100 text-orange-800 text-sm font-semibold rounded-full">${count}</span>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" class="w-5 h-5 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
-          </div>
-        </button>`;
+      const CurrencyRupeeIcon = () => (
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 8.25H9m6 3H9m3 6l-3-3h1.5a3 3 0 1 0 0-6M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      );
 
-      const YodhaCard = (yodha) => `
-        <button onclick="showDetailsModal('${yodha.id}')" class="w-full bg-white p-5 rounded-xl shadow-lg transition-all hover:shadow-md hover:bg-orange-50 text-left">
-          <h3 class="text-xl font-bold text-orange-700">${yodha.accusedName}</h3>
-          ${yodha.yodhaNumber ? `<p class="text-sm font-semibold text-gray-500">Yodha #: ${yodha.yodhaNumber}</p>` : ''}
-          <p class="text-sm text-gray-500">${[yodha.village, yodha.district, yodha.state].filter(Boolean).join(', ')}</p>
-        </button>`;
-
-      // List rendering logic
-      let listContent = '';
-      if (isLoading) {
-        listContent = `<div class="flex justify-center items-center h-48"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-700"></div></div>`;
-      } else if (yodhas.length === 0) {
-        listContent = `<div class="bg-white text-center p-12 rounded-xl shadow-lg"><p class="text-gray-500">No Yodhas have been added yet.</p></div>`;
-      } else {
-        if (navigationLevel === 'states') {
-          listContent = statesWithCount.length > 0
-            ? statesWithCount.map(s => NavigationCard(s.name, s.count, `handleStateClick('${s.name}')`)).join('')
-            : `<div class="bg-white text-center p-12 rounded-xl shadow-lg"><p class="text-gray-500">No states match your search: "${searchQuery}"</p></div>`;
-        } else if (navigationLevel === 'districts') {
-          listContent = districtsWithCount.length > 0
-            ? districtsWithCount.map(d => NavigationCard(d.name, d.count, `handleDistrictClick('${d.name}')`)).join('')
-            : `<div class="bg-white text-center p-12 rounded-xl shadow-lg"><p class="text-gray-500">No districts match your search: "${searchQuery}"</p></div>`;
-        } else if (navigationLevel === 'yodhas') {
-          listContent = yodhasInDistrict.length > 0
-            ? yodhasInDistrict.map(y => YodhaCard(y)).join('')
-            : `<div class="bg-white text-center p-12 rounded-xl shadow-lg"><p class="text-gray-500">No yodhas match your search: "${searchQuery}"</p></div>`;
-        }
-      }
-
-      return `
-        ${error ? `<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
-          <span class="block sm:inline">${error}</span>
-          <button onclick="setError('')" class="absolute top-0 bottom-0 right-0 px-4 py-3"><span class="text-xl">&times;</span></button>
-        </div>` : ''}
-        
-        <div class="flex flex-col md:flex-row md:gap-8">
-          <!-- Input Form -->
-          <div class="md:w-1/3 w-full mb-8 md:mb-0">
-            <div class="bg-white p-6 rounded-xl shadow-lg">
-              <h2 class="text-2xl font-semibold text-gray-900 mb-6">Add New Yodha</h2>
-              ${renderYodhaForm(initialFormData, 'add-yodha-form', 'handleAddSubmit', null, false)}
-            </div>
-          </div>
-          
-          <!-- Display List -->
-          <div class="md:w-2/3 w-full">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
-              <h2 class="text-2xl font-semibold text-gray-900 mb-4 sm:mb-0">Registered Yodhas</h2>
-              <div class="relative w-full sm:w-auto">
-                <input type="text" placeholder="Search..." value="${searchQuery}" oninput="handleSearch(event)" class="pl-10 pr-4 py-2 w-full sm:w-64 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500" />
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" class="w-5 h-5 text-gray-400"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
-                </div>
-              </div>
-            </div>
-            ${Breadcrumbs()}
-            <div class="space-y-4">${listContent}</div>
-          </div>
-        </div>`;
-    };
-
-    // --- Template: Accounts View ---
-    const renderAccountsView = () => {
-      const { totalAmount, yodhaBreakdown } = transactions.reduce((acc, tx) => {
-        acc.totalAmount += tx.amount;
-        const name = tx.yodhaName || 'Unknown Yodha';
-        if (!acc.breakdown[name]) acc.breakdown[name] = { total: 0, count: 0 };
-        acc.breakdown[name].total += tx.amount;
-        acc.breakdown[name].count += 1;
-        return acc;
-      }, { totalAmount: 0, breakdown: {} });
-      
-      const sortedBreakdown = Object.entries(yodhaBreakdown)
-        .map(([name, data]) => ({ name, ...data }))
-        .sort((a, b) => b.total - a.total);
-
-      const formatCurrency = (num) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(num);
-      
-      const yodhaOptions = [{ value: '', label: 'Select a Yodha...' }, ...yodhas.map(y => ({ value: y.id, label: y.accusedName }))]
-
-      return `
-        ${error ? `<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">
-          <span class="block sm:inline">${error}</span>
-          <button onclick="setError('')" class="absolute top-0 bottom-0 right-0 px-4 py-3"><span class="text-xl">&times;</span></button>
-        </div>` : ''}
-        <div class="flex flex-col md:flex-row md:gap-8">
-          <!-- Left Column: Add Transaction Form & Summary -->
-          <div class="md:w-1/3 w-full mb-8 md:mb-0 space-y-6">
-            <div class="bg-white p-6 rounded-xl shadow-lg">
-              <h2 class="text-2xl font-semibold text-gray-900 mb-6">Add Transaction</h2>
-              <form id="add-tx-form" class="space-y-4">
-                ${FormSelect("Select Yodha", "yodhaId", "", true, yodhaOptions)}
-                ${FormInput("Amount (INR)", "amount", "", "number", true, "e.g., 5000", `step="0.01" min="0"`)}
-                ${FormInput("Date", "date", "", "date", true)}
-                <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors disabled:bg-gray-400">
-                  Save Transaction
+      // --- Login Screen Component ---
+      const LoginScreen = ({ pinInput, setPinInput, pinError, onSubmit }) => {
+        return (
+          <div className="flex items-center justify-center min-h-screen bg-orange-50">
+            <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm text-center">
+              <h2 className="text-3xl font-bold text-orange-700 mb-6">
+                Dharma Yodha Database
+              </h2>
+              <p className="text-gray-600 mb-4">Please enter your PIN to continue.</p>
+              <form onSubmit={onSubmit} className="space-y-4">
+                <FormInput 
+                  label="PIN"
+                  name="pin"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  type="password"
+                  required={true}
+                  placeholder="****"
+                  autoComplete="off"
+                  pattern="\d*"
+                  title="Please enter your PIN"
+                />
+                {pinError && (
+                  <p className="text-red-500 text-sm">{pinError}</p>
+                )}
+                <button
+                  type="submit"
+                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors"
+                >
+                  Unlock
                 </button>
               </form>
             </div>
-            <div class="bg-white p-6 rounded-xl shadow-lg text-center">
-              <h3 class="text-lg font-medium text-gray-500 mb-2">Total Amount Disbursed</h3>
-              <p class="text-4xl font-bold text-orange-700">${formatCurrency(totalAmount)}</p>
+          </div>
+        );
+      };
+
+      // --- Form Input Components ---
+      const FormInput = ({ label, name, value, onChange, type = 'text', required = false, placeholder = '', ...props }) => (
+        <div>
+          <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}</label>
+          <input
+            type={type}
+            name={name}
+            id={name}
+            value={value}
+            onChange={onChange}
+            required={required}
+            placeholder={placeholder}
+            {...props}
+            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+          />
+        </div>
+      );
+
+      const FormSelect = ({ label, name, value, onChange, required = false, children }) => (
+        <div>
+          <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}</label>
+          <select
+            name={name}
+            id={name}
+            value={value}
+            onChange={onChange}
+            required={required}
+            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+          >
+            {children}
+          </select>
+        </div>
+      );
+
+      const FormTextArea = ({ label, name, value, onChange, placeholder = '', rows = 4 }) => (
+        <div>
+          <label htmlFor={name} className="block text-sm font-medium text-gray-700">{label}</label>
+          <textarea
+            name={name}
+            id={name}
+            rows={rows}
+            value={value}
+            onChange={onChange}
+            className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+            placeholder={placeholder}
+          ></textarea>
+        </div>
+      );
+
+      // --- Yodha Form Component (for Add and Edit) ---
+      const YodhaForm = ({ 
+        initialData, 
+        onSubmit, 
+        onCancel, 
+        isEdit = false, 
+        districts = [], 
+        onManageDistrictClick, 
+        states = [],
+        onManageStateClick, 
+        categories = [],
+        onManageCategoryClick 
+      }) => {
+        const [formData, setFormData] = useState(initialData);
+
+        useEffect(() => {
+          setFormData(initialData);
+        }, [initialData]);
+
+        const handleInputChange = (e) => {
+          const { name, value } = e.target;
+          setFormData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          if (!formData.accusedName) {
+            // Parent component handles error
+          }
+          
+          const success = await onSubmit(formData);
+          if (success && !isEdit) {
+            setFormData(initialData);
+          }
+        };
+
+        return (
+          <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+            <FormInput label="Yodha Number" name="yodhaNumber" value={formData.yodhaNumber} onChange={handleInputChange} />
+            <FormInput label="Accused Name" name="accusedName" value={formData.accusedName} onChange={handleInputChange} required={true} />
+            
+            <div>
+              <label htmlFor="district" className="block text-sm font-medium text-gray-700">District</label>
+              <div className="flex items-center gap-2 mt-1">
+                <select
+                  name="district"
+                  id="district"
+                  value={formData.district || ''}
+                  onChange={handleInputChange}
+                  className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                >
+                  <option value="">Select a district...</option>
+                  {districts.map(d => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onManageDistrictClick} 
+                  className="flex-shrink-0 p-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                  aria-label="Manage districts"
+                >
+                  <PlusIcon />
+                </button>
+              </div>
+            </div>
+            
+            <FormInput label="Village" name="village" value={formData.village} onChange={handleInputChange} />
+
+            <div>
+              <label htmlFor="state" className="block text-sm font-medium text-gray-700">State</label>
+              <div className="flex items-center gap-2 mt-1">
+                <select
+                  name="state"
+                  id="state"
+                  value={formData.state || ''}
+                  onChange={handleInputChange}
+                  className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                >
+                  <option value="">Select a state...</option>
+                  {states.map(s => (
+                    <option key={s.id} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onManageStateClick} 
+                  className="flex-shrink-0 p-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                  aria-label="Manage states"
+                >
+                  <PlusIcon />
+                </button>
+              </div>
+            </div>
+            
+            <FormInput label="Incident Date" name="incidentDate" value={formData.incidentDate} onChange={handleInputChange} type="date" />
+
+            <div>
+              <label htmlFor="category" className="block text-sm font-medium text-gray-700">Category</label>
+              <div className="flex items-center gap-2 mt-1">
+                <select
+                  name="category"
+                  id="category"
+                  value={formData.category || ''}
+                  onChange={handleInputChange}
+                  className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                >
+                  <option value="">Select a category...</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onManageCategoryClick} 
+                  className="flex-shrink-0 p-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                  aria-label="Manage categories"
+                >
+                  <PlusIcon />
+                </button>
+              </div>
+            </div>
+            
+            <h3 className="text-lg font-medium text-gray-800 pt-2 border-t mt-4">Karyakarta Details</h3>
+            <FormInput 
+              label="Local Karyakarta Name and Number" 
+              name="localKaryakarta" 
+              value={formData.localKaryakarta} 
+              onChange={handleInputChange} 
+              placeholder="e.g., Ramesh Kumar - 98XXXXX" 
+            />
+            <FormInput 
+              label="Main Karyakarta Name and Number" 
+              name="mainKaryakarta" 
+              value={formData.mainKaryakarta} 
+              onChange={handleInputChange} 
+              placeholder="e.g., Suresh Singh - 97XXXXX" 
+            />
+
+            <h3 className="text-lg font-medium text-gray-800 pt-2 border-t mt-4">Case Status</h3>
+            <FormSelect label="Contact Established" name="contactEstablished" value={formData.contactEstablished} onChange={handleInputChange} required={true}>
+              <option value="">Select...</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </FormSelect>
+            <FormSelect label="Reached Help" name="helpReached" value={formData.helpReached} onChange={handleInputChange} required={true}>
+              <option value="">Select...</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </FormSelect>
+            <FormSelect label="FIR Registered" name="firRegistered" value={formData.firRegistered} onChange={handleInputChange} required={true}>
+              <option value="">Select...</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </FormSelect>
+            <FormInput label="Deceased Name (if any)" name="deceasedName" value={formData.deceasedName} onChange={handleInputChange} />
+            <FormTextArea label="Case Details" name="caseDetails" value={formData.caseDetails} onChange={handleInputChange} placeholder="Describe the case details..." />
+            
+            <div className="flex gap-4 pt-4">
+              <button
+                type="submit"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors"
+              >
+                {isEdit ? 'Save Changes' : 'Add Yodha'}
+              </button>
+              {onCancel && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+        );
+      };
+
+      // --- Modal Component ---
+      const Modal = ({ children, onClose, size = 'md' }) => {
+        const sizeClass = size === 'md' ? 'max-w-md' : 'max-w-xs';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={onClose}>
+            <div className={`bg-white p-6 rounded-xl shadow-lg w-full ${sizeClass}`} onClick={(e) => e.stopPropagation()}>
+              {children}
             </div>
           </div>
-          <!-- Right Column: Breakdown by Yodha -->
-          <div class="md:w-2/3 w-full">
-            <h2 class="text-2xl font-semibold text-gray-900 mb-6">Breakdown by Yodha</h2>
-            ${transactions.length === 0 ? `
-              <div class="bg-white text-center p-12 rounded-xl shadow-lg"><p class="text-gray-500">No transactions have been added yet.</p></div>`
-            : `
-              <div class="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                ${sortedBreakdown.map(yodha => `
-                  <div class="bg-white p-5 rounded-xl shadow-lg flex justify-between items-center">
-                    <div>
-                      <h3 class="text-xl font-bold text-orange-700">${yodha.name}</h3>
-                      <p class="text-sm text-gray-500">${yodha.count} transaction(s)</p>
+        );
+      };
+
+      // --- Yodha Details Modal (NEW) ---
+      const YodhaDetailsModal = ({ yodha, onClose, onEdit, onDelete }) => {
+        const renderDetail = (label, value) => {
+          if (!value) return null;
+          return (
+            <div className="py-2 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt className="text-sm font-medium text-gray-500">{label}</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{value}</dd>
+            </div>
+          );
+        };
+
+        const renderStatus = (label, value) => {
+          if (!value) return null;
+          const color = value === 'yes' ? 'text-green-600' : 'text-red-600';
+          return (
+            <div className="py-2 sm:grid sm:grid-cols-3 sm:gap-4">
+              <dt className="text-sm font-medium text-gray-500">{label}</dt>
+              <dd className="mt-1 text-sm font-semibold sm:mt-0 sm:col-span-2">
+                <span className={`${color} capitalize`}>{value}</span>
+              </dd>
+            </div>
+          );
+        };
+
+        const handleGeneratePdf = () => {
+          if (!window.jspdf) {
+            console.error("jsPDF library not loaded yet.");
+            return; 
+          }
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF();
+
+          doc.setFont('Helvetica', 'bold');
+          doc.setFontSize(20);
+          doc.text(yodha.accusedName, 10, 20);
+
+          doc.setFont('Helvetica', 'normal');
+          doc.setFontSize(12);
+          let y = 30;
+
+          const addLine = (text) => {
+            if (text) {
+              doc.text(text, 10, y);
+              y += 7;
+            }
+          };
+          
+          const addHeader = (text) => {
+            y += 3;
+            doc.setFont('Helvetica', 'bold');
+            addLine(text);
+            doc.setFont('Helvetica', 'normal');
+          };
+
+          addLine(`Yodha Number: ${yodha.yodhaNumber || 'N/A'}`);
+          const location = [yodha.village, yodha.district, yodha.state].filter(Boolean).join(', ');
+          addLine(`Location: ${location || 'N/A'}`);
+          addLine(`Incident Date: ${yodha.incidentDate || 'N/A'}`);
+          addLine(`Category: ${yodha.category || 'N/A'}`);
+          addLine(`Deceased Name: ${yodha.deceasedName || 'N/A'}`);
+          
+          addHeader('Karyakarta Details:');
+          addLine(`  Local: ${yodha.localKaryakarta || 'N/A'}`);
+          addLine(`  Main: ${yodha.mainKaryakarta || 'N/A'}`);
+          
+          addHeader('Case Status:');
+          addLine(`  Contact Established: ${yodha.contactEstablished ? yodha.contactEstablished.toUpperCase() : 'N/A'}`);
+          addLine(`  Help Reached: ${yodha.helpReached ? yodha.helpReached.toUpperCase() : 'N/A'}`);
+          addLine(`  FIR Registered: ${yodha.firRegistered ? yodha.firRegistered.toUpperCase() : 'N/A'}`);
+          
+          addHeader('Case Details:');
+          const details = yodha.caseDetails || 'N/A';
+          const splitDetails = doc.splitTextToSize(details, 180);
+          doc.text(splitDetails, 10, y);
+          
+          const filename = `${yodha.accusedName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_details.pdf`;
+          doc.save(filename);
+        };
+
+
+        return (
+          <Modal onClose={onClose} size="md">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-2xl font-bold text-orange-700">{yodha.accusedName}</h3>
+              <button
+                onClick={onClose}
+                className="p-1 text-gray-400 hover:text-gray-600 rounded-full focus:outline-none"
+                aria-label="Close"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto pr-2">
+              <dl className="divide-y divide-gray-200">
+                {renderDetail("Yodha Number", yodha.yodhaNumber)}
+                {renderDetail("Location", [yodha.village, yodha.district, yodha.state].filter(Boolean).join(', '))}
+                {renderDetail("Incident Date", yodha.incidentDate)}
+                {renderDetail("Category", yodha.category)}
+                {renderDetail("Deceased Name", yodha.deceasedName)}
+                {renderDetail("Local Karyakarta", yodha.localKaryakarta)}
+                {renderDetail("Main Karyakarta", yodha.mainKaryakarta)}
+                {renderStatus("Contact Established", yodha.contactEstablished)}
+                {renderStatus("Help Reached", yodha.helpReached)}
+                {renderStatus("FIR Registered", yodha.firRegistered)}
+                {renderDetail("Case Details", yodha.caseDetails)}
+              </dl>
+            </div>
+
+            <div className="flex justify-end gap-4 mt-6 pt-4 border-t">
+              <button
+                onClick={handleGeneratePdf}
+                className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex items-center gap-2"
+              >
+                <ShareIcon />
+                Share (PDF)
+              </button>
+              <button
+                onClick={onEdit}
+                className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center gap-2"
+              >
+                <PencilIcon />
+                Edit
+              </button>
+              <button
+                onClick={onDelete}
+                className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 flex items-center gap-2"
+              >
+                <TrashIcon />
+                Delete
+              </button>
+            </div>
+          </Modal>
+        );
+      };
+
+      // --- Delete Confirmation Modal ---
+      const DeleteConfirmationModal = ({ onConfirm, onCancel }) => (
+        <Modal onClose={onCancel} size="md">
+          <h3 className="text-xl font-semibold text-gray-900 mb-4">Confirm Deletion</h3>
+          <p className="text-gray-600 mb-6">Are you sure you want to delete this entry? This action cannot be undone.</p>
+          <div className="flex justify-end gap-4">
+            <button
+              onClick={onCancel}
+              className="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onConfirm}
+              className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              Delete
+            </button>
+          </div>
+        </Modal>
+      );
+
+      // --- Generic List Management Modal ---
+      const ManageListModal = ({ title, items, onConfirmAdd, onConfirmDelete, onCancel, placeholder }) => {
+        const [newItemName, setNewItemName] = useState('');
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          if (newItemName.trim()) {
+            onConfirmAdd(newItemName.trim());
+            setNewItemName('');
+          }
+        };
+
+        return (
+          <Modal onClose={onCancel} size="md">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4">{title}</h3>
+            
+            <form onSubmit={handleSubmit} className="space-y-2 mb-4">
+              <label htmlFor="newItemName" className="block text-sm font-medium text-gray-700">Add New {placeholder}</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  name="newItemName"
+                  id="newItemName"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  placeholder={`e.g., ${placeholder}`}
+                  className="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm"
+                />
+                <button
+                  type="submit"
+                  className="flex-shrink-0 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+                  aria-label="Add new item"
+                >
+                  Add
+                </button>
+              </div>
+            </form>
+
+            <h4 className="text-md font-medium text-gray-800 mb-2">Existing Items</h4>
+            <div className="max-h-60 overflow-y-auto pr-2 space-y-2 border p-3 rounded-md bg-gray-50">
+              {items.length === 0 ? (
+                <p className="text-gray-500 text-sm text-center">No items created yet.</p>
+              ) : (
+                items.map(item => (
+                  <div key={item.id} className="flex justify-between items-center p-2 bg-white rounded-md shadow-sm">
+                    <span className="text-gray-800">{item.name}</span>
+                    <button
+                      onClick={() => onConfirmDelete(item.id)}
+                      className="p-1 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100"
+                      aria-label={`Delete ${item.name}`}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={onCancel}
+                type="button"
+                className="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                Done
+              </button>
+            </div>
+          </Modal>
+        );
+      };
+
+      // --- List of Indian States ---
+      const indianStates = [
+        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", 
+        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", 
+        "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", 
+        "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", 
+        "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"
+      ];
+
+      // --- One-time function to pre-populate states ---
+      // --- CORRECTED: This now runs on a PUBLIC path ---
+      const prepopulateStates = async (db) => {
+        try {
+          const settingsDocRef = doc(db, `/app_settings/initFlags`); // PUBLIC path
+          const settingsDoc = await getDoc(settingsDocRef);
+
+          if (settingsDoc.exists() && settingsDoc.data().states_prepopulated) {
+            console.log("States are already pre-populated.");
+            return;
+          }
+
+          console.log("Pre-populating states for the first time...");
+          const statesCollRef = collection(db, `/states`); // PUBLIC path
+          const existingStatesSnap = await getDocs(statesCollRef);
+          const existingStateNames = new Set(existingStatesSnap.docs.map(d => d.data().name.toLowerCase()));
+          
+          indianStates.forEach(stateName => {
+            if (!existingStateNames.has(stateName.toLowerCase())) {
+              addDoc(statesCollRef, { name: stateName });
+            }
+          });
+
+          await setDoc(settingsDocRef, { states_prepopulated: true });
+          console.log("States pre-population complete.");
+
+        } catch (err) {
+          console.error("Error in pre-populating states: ", err);
+        }
+      };
+
+      // --- Define initialFormData OUTSIDE the component ---
+      const initialFormData = {
+        yodhaNumber: '', accusedName: '', district: '', village: '', state: '', incidentDate: '', category: '',
+        localKaryakarta: '', mainKaryakarta: '',
+        contactEstablished: '', helpReached: '', deceasedName: '', firRegistered: '', caseDetails: ''
+      };
+
+      // --- Accounts View Component ---
+      const AccountsView = ({ yodhas, transactions, onAddTransaction, error, setError }) => {
+        const initialTxData = { yodhaId: '', amount: '', date: '' };
+        const [txData, setTxData] = useState(initialTxData);
+        const [isSubmitting, setIsSubmitting] = useState(false);
+
+        const handleInputChange = (e) => {
+          const { name, value } = e.target;
+          setTxData(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          setIsSubmitting(true);
+          setError('');
+          
+          const success = await onAddTransaction(txData);
+          
+          if (success) {
+            setTxData(initialTxData);
+          }
+          setIsSubmitting(false);
+        };
+
+        const { totalAmount, yodhaBreakdown } = React.useMemo(() => {
+          const total = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+          
+          const breakdown = transactions.reduce((acc, tx) => {
+            const name = tx.yodhaName || 'Unknown Yodha';
+            if (!acc[name]) {
+              acc[name] = { total: 0, count: 0 };
+            }
+            acc[name].total += tx.amount;
+            acc[name].count += 1;
+            return acc;
+          }, {});
+
+          const sortedBreakdown = Object.entries(breakdown)
+            .map(([name, data]) => ({ name, ...data }))
+            .sort((a, b) => b.total - a.total);
+            
+          return { totalAmount: total, yodhaBreakdown: sortedBreakdown };
+        }, [transactions]);
+
+        const formatCurrency = (num) => {
+          return new Intl.NumberFormat('en-IN', {
+            style: 'currency',
+            currency: 'INR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(num);
+        };
+
+        return (
+          <div className="flex flex-col md:flex-row md:gap-8">
+            <div className="md:w-1/3 w-full mb-8 md:mb-0 space-y-6">
+              <div className="bg-white p-6 rounded-xl shadow-lg">
+                <h2 className="text-2xl font-semibold text-gray-900 mb-6">Add Transaction</h2>
+                {error && (
+                  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">
+                    <span className="block sm:inline">{error}</span>
+                    <button onClick={() => setError('')} className="absolute top-0 bottom-0 right-0 px-4 py-3"><span className="text-xl">&times;</span></button>
+                  </div>
+                )}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <FormSelect label="Select Yodha" name="yodhaId" value={txData.yodhaId} onChange={handleInputChange} required={true}>
+                    <option value="">Select a Yodha...</option>
+                    {yodhas.map(y => (
+                      <option key={y.id} value={y.id}>{y.accusedName}</option>
+                    ))}
+                  </FormSelect>
+                  <FormInput label="Amount (INR)" name="amount" value={txData.amount} onChange={handleInputChange} type="number" step="0.01" min="0" required={true} placeholder="e.g., 5000" />
+                  <FormInput label="Date" name="date" value={txData.date} onChange={handleInputChange} type="date" required={true} />
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors disabled:bg-gray-400"
+                  >
+                    {isSubmitting ? 'Saving...' : 'Save Transaction'}
+                  </button>
+                </form>
+              </div>
+              <div className="bg-white p-6 rounded-xl shadow-lg text-center">
+                <h3 className="text-lg font-medium text-gray-500 mb-2">Total Amount Disbursed</h3>
+                <p className="text-4xl font-bold text-orange-700">{formatCurrency(totalAmount)}</p>
+              </div>
+            </div>
+            <div className="md:w-2/3 w-full">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-6">Breakdown by Yodha</h2>
+              {transactions.length === 0 ? (
+                <div className="bg-white text-center p-12 rounded-xl shadow-lg">
+                  <p className="text-gray-500">No transactions have been added yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                  {yodhaBreakdown.map((yodha) => (
+                    <div key={yodha.name} className="bg-white p-5 rounded-xl shadow-lg flex justify-between items-center">
+                      <div>
+                        <h3 className="text-xl font-bold text-orange-700">{yodha.name}</h3>
+                        <p className="text-sm text-gray-500">{yodha.count} transaction(s)</p>
+                      </div>
+                      <span className="text-2xl font-semibold text-gray-800">{formatCurrency(yodha.total)}</span>
                     </div>
-                    <span class="text-2xl font-semibold text-gray-800">${formatCurrency(yodha.total)}</span>
-                  </div>`).join('')}
-              </div>`}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>`;
-    };
+        );
+      };
 
-    // --- Template: Analysis View (with Tables) ---
-    const renderSimpleTable = (title, data) => `
-      <div class="bg-white p-6 rounded-xl shadow-lg h-96">
-        <h3 class="text-xl font-semibold text-gray-900 mb-4">${title}</h3>
-        <div class="overflow-y-auto h-80">
-          <table class="w-full">
-            <thead class="sticky top-0 bg-gray-100">
-              <tr>
-                <th class="p-2 text-left font-medium text-gray-600">Item</th>
-                <th class="p-2 text-right font-medium text-gray-600">Count</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${data.map(item => `
-                <tr class="border-b">
-                  <td class="p-2">${item.name}</td>
-                  <td class="p-2 text-right font-medium">${item.value}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+      // --- Analysis Components ---
+      const PIE_COLORS = ['#FF8042', '#FFBB28', '#00C49F', '#0088FE', '#AF19FF', '#FB923C'];
+
+      const SimplePieChart = ({ data, title }) => (
+        <div className="bg-white p-6 rounded-xl shadow-lg h-96">
+          <h3 className="text-xl font-semibold text-gray-900 mb-4">{title}</h3>
+          <ResponsiveContainer width="100%" height="90%">
+            <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+              <Pie
+                data={data}
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="value"
+                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                labelLine={false}
+              >
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              <Legend layout="horizontal" verticalAlign="bottom" align="center" />
+            </PieChart>
+          </ResponsiveContainer>
         </div>
-      </div>`;
+      );
 
-    const renderAnalysisView = () => {
-      if (yodhas.length === 0) {
-        return `<div class="bg-white p-8 rounded-xl shadow-lg text-center">
-          <h2 class="text-2xl font-semibold text-gray-900 mb-4">Analysis</h2>
-          <p class="text-gray-600">No data to analyze. Add Yodhas to the database to see stats here.</p>
-        </div>`;
-      }
-
-      const countBy = (field) => yodhas.reduce((acc, yodha) => {
-        let key = yodha[field] || 'Unknown';
-        if (key === '') key = 'Unknown';
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {});
-      
-      const formatForChart = (data) => Object.entries(data)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value);
-
-      const stateData = formatForChart(countBy('state'));
-      const categoryData = formatForChart(countBy('category'));
-      const firData = formatForChart(countBy('firRegistered'));
-      const helpData = formatForChart(countBy('helpReached'));
-      
-      return `
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          ${renderSimpleTable("Yodhas by State", stateData)}
-          ${renderSimpleTable("Yodhas by Category", categoryData)}
-          ${renderSimpleTable("FIR Registered Status", firData)}
-          ${renderSimpleTable("Help Reached Status", helpData)}
-        </div>`;
-    };
-
-    // --- Template: Main App Layout ---
-    const renderMainLayout = () => `
-      <div class="max-w-7xl mx-auto">
-        <header class="mb-6">
-          <h1 class="text-4xl md:text-5xl font-bold text-orange-700 text-center">
-            Dharma Yodha Database
-          </h1>
-        </header>
-        
-        <!-- Navigation Tabs -->
-        <nav class="flex border-b border-orange-200 mb-8">
-          <button onclick="setCurrentView('database')" class="-mb-px px-6 py-3 text-lg font-medium leading-5 rounded-t-lg transition-colors duration-150 ease-in-out ${currentView === 'database' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-500 hover:text-orange-700'}">
-            Database
-          </button>
-          <button onclick="setCurrentView('accounts')" class="-mb-px px-6 py-3 text-lg font-medium leading-5 rounded-t-lg transition-colors duration-150 ease-in-out ${currentView === 'accounts' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-500 hover:text-orange-700'}">
-            Accounts
-          </button>
-          <button onclick="setCurrentView('analysis')" class="-mb-px px-6 py-3 text-lg font-medium leading-5 rounded-t-lg transition-colors duration-150 ease-in-out ${currentView === 'analysis' ? 'border-b-2 border-orange-600 text-orange-600' : 'text-gray-500 hover:text-orange-700'}">
-            Analysis
-          </button>
-        </nav>
-        
-        <!-- Content Area -->
-        <div id="view-content">
-          ${currentView === 'database' ? renderDatabaseView() : ''}
-          ${currentView === 'accounts' ? renderAccountsView() : ''}
-          ${currentView === 'analysis' ? renderAnalysisView() : ''}
+      const SimpleBarChart = ({ data, title, dataKey }) => (
+          <div className="bg-white p-6 rounded-xl shadow-lg h-96">
+          <h3 className="text-xl font-semibold text-gray-900 mb-4">{title}</h3>
+          <ResponsiveContainer width="100%" height="90%">
+            <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" />
+              <YAxis dataKey="name" type="category" width={100} interval={0} />
+              <Tooltip />
+              <Bar dataKey={dataKey} fill="#F97316" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      </div>`;
+      );
 
-    // --- Main Render Function ---
-    const renderApp = () => {
-      const appRoot = document.getElementById('app-root');
-      if (!appRoot) return;
+      const AnalysisView = ({ yodhas }) => {
+        const { stateData, categoryData, firData, helpData } = React.useMemo(() => {
+          const countBy = (field) => {
+            return yodhas.reduce((acc, yodha) => {
+              let key = yodha[field] || 'Unknown';
+              if (key === '') key = 'Unknown';
+              acc[key] = (acc[key] || 0) + 1;
+              return acc;
+            }, {});
+          };
 
-      if (!isAuthenticated) {
-        appRoot.innerHTML = renderLoginScreen();
-        // Add listener for PIN form
-        const pinForm = document.getElementById('pin-form');
-        if (pinForm) pinForm.addEventListener('submit', handlePinSubmit);
-      } else {
-        appRoot.innerHTML = renderMainLayout();
-        
-        // Add listeners for dynamic forms
-        if (currentView === 'database') {
-          const addForm = document.getElementById('add-yodha-form');
-          if (addForm) addForm.addEventListener('submit', handleAddSubmit);
-        } else if (currentView === 'accounts') {
-          const txForm = document.getElementById('add-tx-form');
-          if (txForm) txForm.addEventListener('submit', handleAddTransaction);
+          const formatForChart = (data) => {
+            return Object.entries(data)
+              .map(([name, value]) => ({ name, value }))
+              .sort((a, b) => b.value - a.value);
+          };
+
+          return {
+            stateData: formatForChart(countBy('state')),
+            categoryData: formatForChart(countBy('category')),
+            firData: formatForChart(countBy('firRegistered')),
+            helpData: formatForChart(countBy('helpReached')),
+          };
+        }, [yodhas]);
+
+        if (yodhas.length === 0) {
+          return (
+            <div className="bg-white p-8 rounded-xl shadow-lg text-center">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+                Analysis
+              </h2>
+              <p className="text-gray-600">
+                No data to analyze. Add Yodhas to the database to see charts here.
+              </p>
+            </div>
+          );
         }
-      }
-    };
-    
-    // --- Modal Templates ---
-    const renderDetailsModal = (yodha) => {
-      const renderDetail = (label, value) => value ? `<div class="py-2 sm:grid sm:grid-cols-3 sm:gap-4"><dt class="text-sm font-medium text-gray-500">${label}</dt><dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">${value}</dd></div>` : '';
-      const renderStatus = (label, value) => value ? `<div class="py-2 sm:grid sm:grid-cols-3 sm:gap-4"><dt class="text-sm font-medium text-gray-500">${label}</dt><dd class="mt-1 text-sm font-semibold sm:mt-0 sm:col-span-2 ${value === 'yes' ? 'text-green-600' : 'text-red-600'} capitalize">${value}</dd></div>` : '';
 
-      return `
-        <div class="flex justify-between items-center mb-4">
-          <h3 class="text-2xl font-bold text-orange-700">${yodha.accusedName}</h3>
-          <button onclick="closeModal()" class="p-1 text-gray-400 hover:text-gray-600 rounded-full focus:outline-none" aria-label="Close">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" class="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <div class="max-h-[60vh] overflow-y-auto pr-2">
-          <dl class="divide-y divide-gray-200">
-            ${renderDetail("Yodha Number", yodha.yodhaNumber)}
-            ${renderDetail("Location", [yodha.village, yodha.district, yodha.state].filter(Boolean).join(', '))}
-            ${renderDetail("Incident Date", yodha.incidentDate)}
-            ${renderDetail("Category", yodha.category)}
-            ${renderDetail("Deceased Name", yodha.deceasedName)}
-            ${renderDetail("Local Karyakarta", yodha.localKaryakarta)}
-            ${renderDetail("Main Karyakarta", yodha.mainKaryakarta)}
-            ${renderStatus("Contact Established", yodha.contactEstablished)}
-            ${renderStatus("Help Reached", yodha.helpReached)}
-            ${renderStatus("FIR Registered", yodha.firRegistered)}
-            ${renderDetail("Case Details", yodha.caseDetails)}
-          </dl>
-        </div>
-        <div class="flex justify-end gap-4 mt-6 pt-4 border-t">
-          <button onclick="handleGeneratePdf()" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 flex items-center gap-2">${ShareIcon()} Share (PDF)</button>
-          <button onclick="showEditModal()" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center gap-2">${PencilIcon()} Edit</button>
-          <button onclick="showDeleteModal()" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 flex items-center gap-2">${TrashIcon()} Delete</button>
-        </div>`;
-    };
-    
-    const renderEditModal = (yodha) => {
-      return `
-        <h2 class="text-2xl font-semibold text-gray-900 mb-6">Edit Yodha</h2>
-        ${renderYodhaForm(yodha, 'edit-yodha-form', 'handleUpdateSubmit', 'closeModal()', true)}
-      `;
-    };
-    
-    const renderDeleteModal = () => `
-      <h3 class="text-xl font-semibold text-gray-900 mb-4">Confirm Deletion</h3>
-      <p class="text-gray-600 mb-6">Are you sure you want to delete this entry? This action cannot be undone.</p>
-      <div class="flex justify-end gap-4">
-        <button onclick="closeModal()" class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">Cancel</button>
-        <button onclick="handleConfirmDelete()" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">Delete</button>
-      </div>`;
-      
-    const renderManageListModal = (type) => {
-      let list, placeholder;
-      if (type === 'districts') { list = districts; placeholder = 'District'; }
-      else if (type === 'states') { list = states; placeholder = 'State'; }
-      else { list = categories; placeholder = 'Category'; }
-
-      return `
-        <h3 class="text-xl font-semibold text-gray-900 mb-4">Manage ${placeholder}s</h3>
-        <form id="manage-list-form" class="space-y-2 mb-4">
-          <label for="newItemName" class="block text-sm font-medium text-gray-700">Add New ${placeholder}</label>
-          <div class="flex items-center gap-2">
-            <input type="text" name="newItemName" id="newItemName" placeholder="e.g., ${placeholder}" class="block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm" />
-            <button type="submit" class="flex-shrink-0 px-4 py-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">Add</button>
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <SimpleBarChart data={stateData} title="Yodhas by State" dataKey="value" />
+            <SimpleBarChart data={categoryData} title="Yodhas by Category" dataKey="value" />
+            <SimplePieChart data={firData} title="FIR Registered Status" />
+            <SimplePieChart data={helpData} title="Help Reached Status" />
           </div>
-        </form>
-        <h4 class="text-md font-medium text-gray-800 mb-2">Existing Items</h4>
-        <div class="max-h-60 overflow-y-auto pr-2 space-y-2 border p-3 rounded-md bg-gray-50">
-          ${list.length === 0 ? `<p class="text-gray-500 text-sm text-center">No items created yet.</p>` : ''}
-          ${list.map(item => `
-            <div class="flex justify-between items-center p-2 bg-white rounded-md shadow-sm">
-              <span class="text-gray-800">${item.name}</span>
-              <button onclick="handleDeleteItem('${type}', '${item.id}', '${item.name}')" class="p-1 text-red-500 hover:text-red-700 rounded-full hover:bg-red-100" aria-label="Delete ${item.name}">${TrashIcon()}</button>
-            </div>`).join('')}
-        </div>
-        <div class="flex justify-end mt-6">
-          <button onclick="closeModal()" type="button" class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Done</button>
-        </div>`;
-    };
+        );
+      };
 
-    // --- Modal Control Functions ---
-    const showModal = (content, size = 'md') => {
-      const modalContainer = document.getElementById('modal-container');
-      const modalContent = document.getElementById('modal-content');
-      modalContent.className = `bg-white p-6 rounded-xl shadow-lg w-full ${size === 'md' ? 'max-w-md' : 'max-w-xs'}`;
-      modalContent.innerHTML = content;
-      modalContainer.style.display = 'flex';
-    };
 
-    window.closeModal = () => {
-      document.getElementById('modal-container').style.display = 'none';
-      document.getElementById('modal-content').innerHTML = '';
-      // Clear all modal states
-      editingYodha = null;
-      deletingYodhaId = null;
-      viewingYodha = null;
-      isManagingDistricts = false;
-      isManagingStates = false;
-      isManagingCategories = false;
-    };
-    
-    window.showDetailsModal = (id) => {
-      viewingYodha = yodhas.find(y => y.id === id);
-      if (viewingYodha) showModal(renderDetailsModal(viewingYodha));
-    };
-    
-    window.showEditModal = () => {
-      editingYodha = viewingYodha; // Assumes viewingYodha is set
-      showModal(renderEditModal(editingYodha));
-      // Add submit listener for the edit form
-      document.getElementById('edit-yodha-form').addEventListener('submit', handleUpdateSubmit);
-    };
-    
-    window.showDeleteModal = () => {
-      deletingYodhaId = viewingYodha.id; // Assumes viewingYodha is set
-      showModal(renderDeleteModal());
-    };
-    
-    window.showManageListModal = (type) => {
-      if (type === 'districts') isManagingDistricts = true;
-      else if (type === 'states') isManagingStates = true;
-      else if (type === 'categories') isManagingCategories = true;
-      
-      showModal(renderManageListModal(type));
-      
-      document.getElementById('manage-list-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const input = e.target.elements.newItemName;
-        const name = input.value.trim();
-        if (name) {
-          handleAddItem(type, name);
-          input.value = ''; // Clear input, modal will re-render on snapshot
-        }
-      });
-    };
-    
-    // --- Event Handlers (Global) ---
-    window.setCurrentView = (view) => {
-      currentView = view;
-      renderApp();
-    };
-    
-    window.handlePinSubmit = (e) => {
-      e.preventDefault();
-      const form = new FormData(e.target);
-      pinInput = form.get('pin');
-      if (pinInput === correctPin) {
-        isAuthenticated = true;
-        pinError = '';
-        pinInput = '';
-      } else {
-        pinError = 'Incorrect PIN. Please try again.';
-        pinInput = '';
-      }
-      renderApp();
-    };
-    
-    window.handleSearch = (event) => {
-      searchQuery = event.target.value;
-      renderApp(); // Re-render the database view
-    };
-    
-    window.handleStateClick = (stateName) => {
-      selectedState = stateName;
-      navigationLevel = 'districts';
-      searchQuery = '';
-      renderApp();
-    };
-    
-    window.handleDistrictClick = (districtName) => {
-      selectedDistrict = districtName;
-      navigationLevel = 'yodhas';
-      searchQuery = '';
-      renderApp();
-    };
-    
-    window.handleBreadcrumbClick = (level) => {
-      searchQuery = '';
-      if (level === 'states') {
-        selectedState = null;
-        selectedDistrict = null;
-        navigationLevel = 'states';
-      } else if (level === 'districts') {
-        selectedDistrict = null;
-        navigationLevel = 'districts';
-      }
-      renderApp();
-    };
-    
-    window.setError = (msg) => {
-      error = msg;
-      renderApp();
-    };
-    
-    // --- Form Data Helper ---
-    const getFormData = (form) => {
-      const formData = new FormData(form);
-      const data = {};
-      for (let [key, value] of formData.entries()) {
-        data[key] = value;
-      }
-      return data;
-    };
-
-    // --- CRUD Handlers ---
-    window.handleAddSubmit = async (e) => {
-      e.preventDefault();
-      if (!db || !userId) {
-        setError("Database is not connected."); return;
-      }
-      const formData = getFormData(e.target);
-      if (!formData.accusedName) {
-        setError("Accused Name is required."); return;
-      }
-      try {
-        await addDoc(collection(db, `/artifacts/${appId}/public/data/yodhas`), formData);
-        setError('');
-        e.target.reset(); // Reset form on success
-      } catch (err) {
-        console.error("Error adding document: ", err);
-        setError("Failed to add Yodha. Please try again.");
-      }
-    };
-    
-    window.handleUpdateSubmit = async (e) => {
-      e.preventDefault();
-      if (!db || !userId || !editingYodha) {
-        setError("Database is not connected."); return;
-      }
-      const formData = getFormData(e.target);
-      try {
-        const docPath = `/artifacts/${appId}/public/data/yodhas/${editingYodha.id}`;
-        await updateDoc(doc(db, docPath), formData);
-        closeModal();
-      } catch (err) {
-        console.error("Error updating document: ", err);
-        setError("Failed to update Yodha. Please try again.");
-      }
-    };
-    
-    window.handleConfirmDelete = async () => {
-      if (!db || !userId || !deletingYodhaId) {
-        setError("Database is not connected."); return;
-      }
-      try {
-        const docPath = `/artifacts/${appId}/public/data/yodhas/${deletingYodhaId}`;
-        await deleteDoc(doc(db, docPath));
-        closeModal();
-      } catch (err) {
-        console.error("Error deleting document: ", err);
-        setError("Failed to delete Yodha. Please try again.");
-      }
-    };
-    
-    window.handleAddTransaction = async (e) => {
-      e.preventDefault();
-      if (!db || !userId) {
-        setError("Database is not connected."); return;
-      }
-      const formData = getFormData(e.target);
-      const { yodhaId, amount, date } = formData;
-      if (!yodhaId || !amount || !date) {
-        setError("Please fill all transaction fields."); return;
-      }
-      const selectedYodha = yodhas.find(y => y.id === yodhaId);
-      if (!selectedYodha) {
-        setError("Selected Yodha not found."); return;
-      }
-      try {
-        await addDoc(collection(db, `/artifacts/${appId}/public/data/transactions`), {
-          yodhaId: yodhaId,
-          yodhaName: selectedYodha.accusedName,
-          amount: parseFloat(amount),
-          date: date,
-        });
-        setError('');
-        e.target.reset(); // Reset form
-      } catch (err) {
-        console.error("Error adding transaction: ", err);
-        setError("Failed to add transaction.");
-      }
-    };
-    
-    window.handleAddItem = async (collectionName, itemName) => {
-      if (!db || !userId) {
-        setError("Database is not connected."); return;
-      }
-      let currentList = (collectionName === 'districts') ? districts : (collectionName === 'states') ? states : categories;
-      const exists = currentList.some(i => i.name.toLowerCase() === itemName.toLowerCase());
-      if (exists) {
-        alert(`This ${collectionName.slice(0, -1)} already exists.`); // Using alert here for simplicity, replacing a proper error state
-        return;
-      }
-      try {
-        await addDoc(collection(db, `/artifacts/${appId}/public/data/${collectionName}`), { name: itemName });
-      } catch (err) {
-        console.error(`Error adding ${collectionName}: `, err);
-        alert(`Failed to add new ${collectionName.slice(0, -1)}.`);
-      }
-    };
-    
-    window.handleDeleteItem = async (collectionName, id, name) => {
-      if (!db || !userId) {
-        alert("Database is not connected."); return;
-      }
-      let itemField = (collectionName === 'districts') ? 'district' : (collectionName === 'states') ? 'state' : 'category';
-      const inUse = yodhas.some(y => y[itemField] === name);
-      if (inUse) {
-        alert(`Cannot delete. This ${itemField} is in use by a Yodha entry.`);
-        return;
-      }
-      try {
-        await deleteDoc(doc(db, `/artifacts/${appId}/public/data/${collectionName}/${id}`));
-      } catch (err) {
-        console.error(`Error deleting ${itemField}: `, err);
-        alert(`Failed to delete ${itemField}.`);
-      }
-    };
-    
-    // --- PDF Generation ---
-    window.handleGeneratePdf = () => {
-      if (!viewingYodha) return;
-      const yodha = viewingYodha;
-      
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      
-      doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(20);
-      doc.text(yodha.accusedName, 10, 20);
-
-      doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(12);
-      let y = 30;
-      const addLine = (text) => { if (text) { doc.text(text, 10, y); y += 7; } };
-      const addHeader = (text) => { y += 3; doc.setFont('Helvetica', 'bold'); addLine(text); doc.setFont('Helvetica', 'normal'); };
-
-      addLine(`Yodha Number: ${yodha.yodhaNumber || 'N/A'}`);
-      addLine(`Location: ${[yodha.village, yodha.district, yodha.state].filter(Boolean).join(', ') || 'N/A'}`);
-      addLine(`Incident Date: ${yodha.incidentDate || 'N/A'}`);
-      addLine(`Category: ${yodha.category || 'N/A'}`);
-      addLine(`Deceased Name: ${yodha.deceasedName || 'N/A'}`);
-      
-      addHeader('Karyakarta Details:');
-      addLine(`  Local: ${yodha.localKaryakarta || 'N/A'}`);
-      addLine(`  Main: ${yodha.mainKaryakarta || 'N/A'}`);
-      
-      addHeader('Case Status:');
-      addLine(`  Contact Established: ${yodha.contactEstablished ? yodha.contactEstablished.toUpperCase() : 'N/A'}`);
-      addLine(`  Help Reached: ${yodha.helpReached ? yodha.helpReached.toUpperCase() : 'N/A'}`);
-      addLine(`  FIR Registered: ${yodha.firRegistered ? yodha.firRegistered.toUpperCase() : 'N/A'}`);
-      
-      addHeader('Case Details:');
-      const details = yodha.caseDetails || 'N/A';
-      const splitDetails = doc.splitTextToSize(details, 180);
-      doc.text(splitDetails, 10, y);
-      
-      const filename = `${yodha.accusedName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_details.pdf`;
-      doc.save(filename);
-    };
-
-    // --- State Pre-population ---
-    const indianStates = ["Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"];
-
-    const prepopulateStates = async (db) => {
-      try {
-        const settingsDocRef = doc(db, `/artifacts/${appId}/public/data/app_settings/initFlags`);
-        const settingsDoc = await getDoc(settingsDocRef);
-        if (settingsDoc.exists() && settingsDoc.data().states_prepopulated) return;
-
-        console.log("Pre-populating states...");
-        const statesCollRef = collection(db, `/artifacts/${appId}/public/data/states`);
-        const existingStatesSnap = await getDocs(statesCollRef);
-        const existingStateNames = new Set(existingStatesSnap.docs.map(d => d.data().name.toLowerCase()));
+      // --- Main App Component (changed from 'export default') ---
+      function App() {
+        const [db, setDb] = useState(null);
+        const [auth, setAuth] = useState(null);
+        const [userId, setUserId] = useState(null);
         
-        for (const stateName of indianStates) {
-          if (!existingStateNames.has(stateName.toLowerCase())) {
-            await addDoc(statesCollRef, { name: stateName });
+        const [yodhas, setYodhas] = useState([]);
+        const [transactions, setTransactions] = useState([]);
+        const [districts, setDistricts] = useState([]);
+        const [states, setStates] = useState([]);
+        const [categories, setCategories] = useState([]);
+        const [isLoading, setIsLoading] = useState(true);
+        const [error, setError] = useState('');
+        const [searchQuery, setSearchQuery] = useState('');
+        
+        const [currentView, setCurrentView] = useState('database');
+
+        const [editingYodha, setEditingYodha] = useState(null);
+        const [deletingYodhaId, setDeletingYodhaId] = useState(null);
+        const [viewingYodha, setViewingYodha] = useState(null);
+        const [isManagingDistricts, setIsManagingDistricts] = useState(false); 
+        const [isManagingStates, setIsManagingStates] = useState(false); 
+        const [isManagingCategories, setIsManagingCategories] = useState(false); 
+
+        const [navigationLevel, setNavigationLevel] = useState('states');
+        const [selectedState, setSelectedState] = useState(null);
+        const [selectedDistrict, setSelectedDistrict] = useState(null);
+
+        const [isAuthenticated, setIsAuthenticated] = useState(false);
+        const [pinInput, setPinInput] = useState('');
+        const [pinError, setPinError] = useState('');
+        const correctPin = '1406';
+
+        // Effect 1: Initialize Firebase
+        useEffect(() => {
+          let authUnsubscribe = null;
+          try {
+            const app = initializeApp(firebaseConfig);
+            const authInstance = getAuth(app);
+            const dbInstance = getFirestore(app);
+            setLogLevel('Debug'); 
+
+            setAuth(authInstance);
+            setDb(dbInstance);
+
+            authUnsubscribe = onAuthStateChanged(authInstance, async (user) => {
+              if (user) {
+                setUserId(user.uid);
+                // --- CORRECTED: Call prepopulate on PUBLIC db path ---
+                await prepopulateStates(dbInstance); 
+              } else {
+                try {
+                  await signInAnonymously(authInstance);
+                } catch (authError) {
+                  console.error("Authentication Error:", authError);
+                  setError("Failed to authenticate. Please refresh the page.");
+                }
+              }
+            });
+          } catch (e) {
+            console.error("Firebase Initialization Error:", e);
+            setError("Failed to initialize the application. Please check the console.");
+            setIsLoading(false);
           }
-        }
-        await setDoc(settingsDocRef, { states_prepopulated: true });
-        console.log("States pre-population complete.");
-      } catch (err) {
-        console.error("Error in pre-populating states: ", err);
-      }
-    };
+          
+          return () => {
+            if (authUnsubscribe) authUnsubscribe();
+          };
+        }, []);
 
-    // --- App Initialization ---
-    const startApp = () => {
-      try {
-        const app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getFirestore(app);
-        setLogLevel('Debug');
+        // Effect 2: Yodhas listener
+        // --- CORRECTED: Use PUBLIC path ---
+        useEffect(() => {
+          if (!db || !userId) return; // Still need auth to be ready
+          
+          setIsLoading(true);
+          const collPath = `/yodhas`; // PUBLIC
+          const yodhasCollection = collection(db, collPath);
+          const q = query(yodhasCollection);
 
-        onAuthStateChanged(auth, async (user) => {
-          if (user) {
-            userId = user.uid;
-            await prepopulateStates(db);
-            // Setup all listeners
-            setupListeners();
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            const yodhasData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            yodhasData.sort((a, b) => (a.accusedName || '').localeCompare(b.accusedName || ''));
+            setYodhas(yodhasData);
+            setIsLoading(false);
+            setError('');
+          }, (err) => {
+            console.error("Firestore Yodhas Snapshot Error:", err);
+            setError("Failed to load data from the database.");
+            setIsLoading(false);
+          });
+
+          return () => unsubscribe();
+        }, [db, userId]);
+        
+        // Effect 3: Districts listener
+        // --- CORRECTED: Use PUBLIC path ---
+        useEffect(() => {
+          if (!db || !userId) return;
+          const collPath = `/districts`; // PUBLIC
+          const q = query(collection(db, collPath));
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            const districtData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            districtData.sort((a, b) => a.name.localeCompare(b.name));
+            setDistricts(districtData);
+          }, (err) => console.error("Firestore Districts Snapshot Error:", err));
+          return () => unsubscribe();
+        }, [db, userId]);
+
+        // Effect 4: States listener
+        // --- CORRECTED: Use PUBLIC path ---
+        useEffect(() => {
+          if (!db || !userId) return;
+          const collPath = `/states`; // PUBLIC
+          const q = query(collection(db, collPath));
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            const stateData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            stateData.sort((a, b) => a.name.localeCompare(b.name));
+            setStates(stateData);
+          }, (err) => console.error("Firestore States Snapshot Error:", err));
+          return () => unsubscribe();
+        }, [db, userId]);
+
+        // Effect 5: Categories listener
+        // --- CORRECTED: Use PUBLIC path ---
+        useEffect(() => {
+          if (!db || !userId) return;
+          const collPath = `/categories`; // PUBLIC
+          const q = query(collection(db, collPath));
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            const categoryData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            categoryData.sort((a, b) => a.name.localeCompare(b.name));
+            setCategories(categoryData);
+          }, (err) => console.error("Firestore Categories Snapshot Error:", err));
+          return () => unsubscribe();
+        }, [db, userId]);
+        
+        // Effect 6: Transactions listener
+        // --- CORRECTED: Use PUBLIC path ---
+        useEffect(() => {
+          if (!db || !userId) return;
+          const collPath = `/transactions`; // PUBLIC
+          const q = query(collection(db, collPath));
+          const unsubscribe = onSnapshot(q, (snapshot) => {
+            const txData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+            txData.forEach(tx => tx.amount = parseFloat(tx.amount) || 0);
+            txData.sort((a, b) => new Date(b.date) - new Date(a.date));
+            setTransactions(txData);
+          }, (err) => console.error("Firestore Transactions Snapshot Error:", err));
+          return () => unsubscribe();
+        }, [db, userId]);
+
+        // --- Form Handlers ---
+        // --- CORRECTED: Use PUBLIC path ---
+        const handleAddSubmit = async (formData) => {
+          if (!db || !userId) {
+            setError("Database is not connected."); return false;
+          }
+          try {
+            const collPath = `/yodhas`; // PUBLIC
+            await addDoc(collection(db, collPath), formData);
+            setError('');
+            return true;
+          } catch (e) {
+            console.error("Error adding document: ", e);
+            setError("Failed to add Yodha.");
+            return false;
+          }
+        };
+
+        // --- CORRECTED: Use PUBLIC path ---
+        const handleUpdateSubmit = async (formData) => {
+          if (!db || !userId || !editingYodha) {
+            setError("Database is not connected."); return;
+          }
+          try {
+            const docPath = `/yodhas/${editingYodha.id}`; // PUBLIC
+            const { id, ...dataToUpdate } = formData; 
+            await updateDoc(doc(db, docPath), dataToUpdate);
+            setEditingYodha(null);
+            setError('');
+          } catch (e) {
+            console.error("Error updating document: ", e);
+            setError("Failed to update Yodha.");
+          }
+        };
+
+        // --- CORRECTED: Use PUBLIC path ---
+        const handleConfirmDelete = async () => {
+          if (!db || !userId || !deletingYodhaId) {
+            setError("Database is not connected."); return;
+          }
+          try {
+            const docPath = `/yodhas/${deletingYodhaId}`; // PUBLIC
+            await deleteDoc(doc(db, docPath));
+            setDeletingYodhaId(null);
+            setError('');
+          } catch (e) {
+            console.error("Error deleting document: ", e);
+            setError("Failed to delete Yodha.");
+          }
+        };
+        
+        // --- CORRECTED: Use PUBLIC path ---
+        const handleAddTransaction = async (txData) => {
+          if (!db || !userId) {
+            setError("Database is not connected."); return false;
+          }
+          const { yodhaId, amount, date } = txData;
+          if (!yodhaId || !amount || !date) {
+            setError("Please fill all transaction fields.");
+            return false;
+          }
+          const selectedYodha = yodhas.find(y => y.id === yodhaId);
+          if (!selectedYodha) {
+            setError("Selected Yodha not found."); return false;
+          }
+          try {
+            const collPath = `/transactions`; // PUBLIC
+            await addDoc(collection(db, collPath), {
+              yodhaId: yodhaId,
+              yodhaName: selectedYodha.accusedName,
+              amount: parseFloat(amount),
+              date: date,
+            });
+            setError('');
+            return true;
+          } catch (e) {
+            console.error("Error adding transaction: ", e);
+            setError("Failed to add transaction.");
+            return false;
+          }
+        };
+
+        // --- CORRECTED: Use PUBLIC path ---
+        const handleAddItem = async (collectionName, itemName) => {
+          if (!db || !userId) {
+            setError("Database is not connected."); return;
+          }
+          let currentList = [];
+          if (collectionName === 'districts') currentList = districts;
+          else if (collectionName === 'states') currentList = states;
+          else if (collectionName === 'categories') currentList = categories;
+
+          const lowerCaseName = itemName.trim().toLowerCase();
+          const exists = currentList.some(i => i.name.toLowerCase() === lowerCaseName);
+          
+          if (exists) {
+            setError(`This ${collectionName.slice(0, -1)} already exists.`);
+            return;
+          }
+          try {
+            const collPath = `/${collectionName}`; // PUBLIC
+            await addDoc(collection(db, collPath), { name: itemName.trim() });
+            setError('');
+          } catch (e) {
+            console.error(`Error adding ${collectionName}: `, e);
+            setError(`Failed to add new ${collectionName.slice(0, -1)}.`);
+          }
+        };
+
+        // --- CORRECTED: Use PUBLIC path ---
+        const handleDeleteItem = async (collectionName, id) => {
+          if (!db || !userId) {
+            setError("Database is not connected."); return;
+          }
+          let itemField = '';
+          let currentList = [];
+          if (collectionName === 'districts') { itemField = 'district'; currentList = districts; }
+          else if (collectionName === 'states') { itemField = 'state'; currentList = states; }
+          else if (collectionName === 'categories') { itemField = 'category'; currentList = categories; }
+
+          const itemToDelete = currentList.find(i => i.id === id);
+          const inUse = yodhas.some(y => y[itemField] === itemToDelete?.name);
+          
+          if (inUse) {
+            setError(`Cannot delete. This ${itemField} is in use by a Yodha entry.`);
+            return;
+          }
+          try {
+            const docPath = `/${collectionName}/${id}`; // PUBLIC
+            await deleteDoc(doc(db, docPath));
+            setError('');
+          } catch (e) {
+            console.error(`Error deleting ${itemField}: `, e);
+            setError(`Failed to delete ${itemField}.`);
+          }
+        };
+
+        const handlePinSubmit = (e) => {
+          e.preventDefault();
+          if (pinInput === correctPin) {
+            setIsAuthenticated(true);
+            setPinError('');
+            setPinInput('');
           } else {
-            if (initialAuthToken) await signInWithCustomToken(auth, initialAuthToken);
-            else await signInAnonymously(auth);
+            setPinError('Incorrect PIN. Please try again.');
+            setPinInput('');
           }
-        });
-      } catch (e) {
-        console.error("Firebase Initialization Error:", e);
-        error = "Failed to initialize the application.";
-        renderApp();
+        };
+
+        const { statesWithCount, districtsWithCount, yodhasInDistrict } = React.useMemo(() => {
+          const query = searchQuery.toLowerCase().trim();
+          const stateGroups = {};
+          yodhas.forEach(yodha => {
+            const state = yodha.state || 'Uncategorized';
+            const district = yodha.district || 'Uncategorized';
+            if (!stateGroups[state]) stateGroups[state] = { count: 0, districts: {} };
+            stateGroups[state].count++;
+            if (!stateGroups[state].districts[district]) stateGroups[state].districts[district] = { count: 0 };
+            stateGroups[state].districts[district].count++;
+          });
+
+          const statesWithCount = Object.entries(stateGroups)
+            .map(([name, data]) => ({ name, count: data.count, districts: data.districts }))
+            .filter(s => s.name.toLowerCase().includes(query))
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+          let districtsWithCount = [];
+          if (selectedState && stateGroups[selectedState]) {
+            districtsWithCount = Object.entries(stateGroups[selectedState].districts)
+              .map(([name, data]) => ({ name, count: data.count }))
+              .filter(d => d.name.toLowerCase().includes(query))
+              .sort((a, b) => a.name.localeCompare(b.name));
+          }
+          
+          let yodhasInDistrict = [];
+          if (selectedState && selectedDistrict) {
+            yodhasInDistrict = yodhas.filter(y => {
+              const state = y.state || 'Uncategorized';
+              const district = y.district || 'Uncategorized';
+              if (state !== selectedState || district !== selectedDistrict) return false;
+              if (!query) return true;
+              const searchableText = [
+                y.accusedName, y.yodhaNumber, y.village, y.category,
+                y.localKaryakarta, y.mainKaryakarta, y.deceasedName, y.caseDetails
+              ].filter(Boolean).join(' ').toLowerCase();
+              return searchableText.includes(query);
+            });
+          }
+          return { statesWithCount, districtsWithCount, yodhasInDistrict };
+        }, [yodhas, searchQuery, selectedState, selectedDistrict]);
+
+        const handleStateClick = (stateName) => {
+          setSelectedState(stateName);
+          setNavigationLevel('districts');
+          setSearchQuery('');
+        };
+
+        const handleDistrictClick = (districtName) => {
+          setSelectedDistrict(districtName);
+          setNavigationLevel('yodhas');
+          setSearchQuery('');
+        };
+
+        const handleBreadcrumbClick = (level) => {
+          setSearchQuery('');
+          if (level === 'states') {
+            setSelectedState(null);
+            setSelectedDistrict(null);
+            setNavigationLevel('states');
+          } else if (level === 'districts') {
+            setSelectedDistrict(null);
+            setNavigationLevel('districts');
+          }
+        };
+        
+        const Breadcrumbs = () => (
+          <nav className="flex items-center gap-2 text-sm font-medium text-gray-500 mb-4">
+            <button
+              onClick={() => handleBreadcrumbClick('states')}
+              className={`hover:text-orange-600 ${navigationLevel === 'states' ? 'text-orange-600' : ''}`}
+            >
+              All States
+            </button>
+            {selectedState && (
+              <>
+                <span>&gt;</span>
+                <button
+                  onClick={() => handleBreadcrumbClick('districts')}
+                  disabled={navigationLevel === 'districts'}
+                  className={`hover:text-orange-600 ${navigationLevel === 'districts' ? 'text-orange-600' : ''} ${navigationLevel === 'yodhas' ? '' : 'cursor-default'}`}
+                >
+                  {selectedState}
+                </button>
+              </>
+            )}
+            {selectedDistrict && (
+              <>
+                <span>&gt;</span>
+                <span className="text-orange-600">{selectedDistrict}</span>
+              </>
+            )}
+          </nav>
+        );
+        
+        const NavigationCard = ({ title, count, onClick }) => (
+          <button
+            onClick={onClick}
+            className="w-full bg-white p-5 rounded-xl shadow-lg transition-all hover:shadow-md hover:bg-orange-50 flex justify-between items-center text-left"
+          >
+            <div><h3 className="text-xl font-bold text-orange-700">{title}</h3></div>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 bg-orange-100 text-orange-800 text-sm font-semibold rounded-full">{count}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+            </div>
+          </button>
+        );
+
+        const YodhaCard = ({ yodha, onClick }) => (
+          <button
+            onClick={onClick}
+            className="w-full bg-white p-5 rounded-xl shadow-lg transition-all hover:shadow-md hover:bg-orange-50 text-left"
+          >
+            <h3 className="text-xl font-bold text-orange-700">{yodha.accusedName}</h3>
+            {yodha.yodhaNumber && (
+              <p className="text-sm font-semibold text-gray-500">Yodha #: {yodha.yodhaNumber}</p>
+            )}
+            <p className="text-sm text-gray-500">
+              {[yodha.village, yodha.district, yodha.state].filter(Boolean).join(', ')}
+            </p>
+          </button>
+        );
+
+        if (!isAuthenticated) {
+          return (
+            <LoginScreen 
+              pinInput={pinInput}
+              setPinInput={setPinInput}
+              pinError={pinError}
+              onSubmit={handlePinSubmit}
+            />
+          );
+        }
+        
+        return (
+          <div className="antialiased text-gray-800 min-h-screen bg-orange-50 p-4 md:p-8" style={{fontFamily: "'Inter', sans-serif"}}>
+            
+            {editingYodha && (
+              <Modal onClose={() => setEditingYodha(null)} size="md">
+                <h2 className="text-2xl font-semibold text-gray-900 mb-6">Edit Yodha</h2>
+                <YodhaForm
+                  initialData={editingYodha}
+                  onSubmit={handleUpdateSubmit}
+                  onCancel={() => setEditingYodha(null)}
+                  isEdit={true}
+                  districts={districts}
+                  onManageDistrictClick={() => setIsManagingDistricts(true)} 
+                  states={states}
+                  onManageStateClick={() => setIsManagingStates(true)} 
+                  categories={categories}
+                  onManageCategoryClick={() => setIsManagingCategories(true)} 
+                />
+              </Modal>
+            )}
+
+            {viewingYodha && (
+              <YodhaDetailsModal
+                yodha={viewingYodha}
+                onClose={() => setViewingYodha(null)}
+                onEdit={() => { setEditingYodha(viewingYodha); setViewingYodha(null); }}
+                onDelete={() => { setDeletingYodhaId(viewingYodha.id); setViewingYodha(null); }}
+              />
+            )}
+
+            {deletingYodhaId && (
+              <DeleteConfirmationModal
+                onConfirm={handleConfirmDelete}
+                onCancel={() => setDeletingYodhaId(null)}
+              />
+            )}
+            
+            {isManagingDistricts && (
+              <ManageListModal
+                title="Manage Districts"
+                items={districts}
+                placeholder="District"
+                onConfirmAdd={(name) => handleAddItem('districts', name)}
+                onConfirmDelete={(id) => handleDeleteItem('districts', id)}
+                onCancel={() => setIsManagingDistricts(false)}
+              />
+            )}
+            
+            {isManagingStates && (
+              <ManageListModal
+                title="Manage States"
+                items={states}
+                placeholder="State"
+                onConfirmAdd={(name) => handleAddItem('states', name)}
+                onConfirmDelete={(id) => handleDeleteItem('states', id)}
+                onCancel={() => setIsManagingStates(false)}
+              />
+            )}
+            
+            {isManagingCategories && (
+              <ManageListModal
+                title="Manage Categories"
+                items={categories}
+                placeholder="Category"
+                onConfirmAdd={(name) => handleAddItem('categories', name)}
+                onConfirmDelete={(id) => handleDeleteItem('categories', id)}
+                onCancel={() => setIsManagingCategories(false)}
+              />
+            )}
+
+            <div className="max-w-7xl mx-auto">
+              <header className="mb-6">
+                <h1 className="text-4xl md:text-5xl font-bold text-orange-700 text-center">
+                  Dharma Yodha Database
+                </h1>
+              </header>
+
+              <nav className="flex border-b border-orange-200 mb-8">
+                <button
+                  onClick={() => setCurrentView('database')}
+                  className={`-mb-px px-6 py-3 text-lg font-medium leading-5 rounded-t-lg transition-colors duration-150 ease-in-out
+                    ${currentView === 'database' ? 'border-b-2 border-orange-600 text-orange-600 focus:outline-none' : 'text-gray-500 hover:text-orange-700 focus:outline-none'}`}
+                >
+                  Database
+                </button>
+                <button
+                  onClick={() => setCurrentView('accounts')}
+                  className={`-mb-px px-6 py-3 text-lg font-medium leading-5 rounded-t-lg transition-colors duration-150 ease-in-out
+                    ${currentView === 'accounts' ? 'border-b-2 border-orange-600 text-orange-600 focus:outline-none' : 'text-gray-500 hover:text-orange-700 focus:outline-none'}`}
+                >
+                  Accounts
+                </button>
+                <button
+                  onClick={() => setCurrentView('analysis')}
+                  className={`-mb-px px-6 py-3 text-lg font-medium leading-5 rounded-t-lg transition-colors duration-150 ease-in-out
+                    ${currentView === 'analysis' ? 'border-b-2 border-orange-600 text-orange-600 focus:outline-none' : 'text-gray-500 hover:text-orange-700 focus:outline-none'}`}
+                >
+                  Analysis
+                </button>
+              </nav>
+
+              {currentView === 'database' && (
+                <>
+                  {error && (
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+                      <span className="block sm:inline">{error}</span>
+                      <button onClick={() => setError('')} className="absolute top-0 bottom-0 right-0 px-4 py-3"><span className="text-xl">&times;</span></button>
+                    </div>
+                  )}
+                  <div className="flex flex-col md:flex-row md:gap-8">
+                    <div className="md:w-1/3 w-full mb-8 md:mb-0">
+                      <div className="bg-white p-6 rounded-xl shadow-lg">
+                        <h2 className="text-2xl font-semibold text-gray-900 mb-6">Add New Yodha</h2>
+                        <YodhaForm
+                          initialData={initialFormData}
+                          onSubmit={handleAddSubmit}
+                          districts={districts}
+                          onManageDistrictClick={() => setIsManagingDistricts(true)} 
+                          states={states}
+                          onManageStateClick={() => setIsManagingStates(true)} 
+                          categories={categories}
+                          onManageCategoryClick={() => setIsManagingCategories(true)} 
+                        />
+                      </div>
+                    </div>
+                    <div className="md:w-2/3 w-full">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+                        <h2 className="text-2xl font-semibold text-gray-900 mb-4 sm:mb-0">Registered Yodhas</h2>
+                        <div className="relative w-full sm:w-auto">
+                          <input
+                            type="text"
+                            placeholder="Search..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10 pr-4 py-2 w-full sm:w-64 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          />
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-gray-400">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+
+                      <Breadcrumbs />
+
+                      {isLoading && currentView === 'database' ? (
+                        <div className="flex justify-center items-center h-48">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-700"></div>
+                        </div>
+                      ) : yodhas.length === 0 ? (
+                        <div className="bg-white text-center p-12 rounded-xl shadow-lg">
+                          <p className="text-gray-500">No Yodhas have been added yet.</p>
+                          <p className="text-gray-500">Use the form to add your first one.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {navigationLevel === 'states' && (
+                            statesWithCount.length > 0 ? (
+                              statesWithCount.map(state => (
+                                <NavigationCard key={state.name} title={state.name} count={state.count} onClick={() => handleStateClick(state.name)} />
+                              ))
+                            ) : (
+                              <div className="bg-white text-center p-12 rounded-xl shadow-lg">
+                                <p className="text-gray-500">No states match your search query:</p>
+                                <p className="text-gray-700 font-medium mt-2">"{searchQuery}"</p>
+                              </div>
+                            )
+                          )}
+                          {navigationLevel === 'districts' && (
+                            districtsWithCount.length > 0 ? (
+                              districtsWithCount.map(district => (
+                                <NavigationCard key={district.name} title={district.name} count={district.count} onClick={() => handleDistrictClick(district.name)} />
+                              ))
+                            ) : (
+                              <div className="bg-white text-center p-12 rounded-xl shadow-lg">
+                                <p className="text-gray-500">No districts match your search query:</p>
+                                <p className="text-gray-700 font-medium mt-2">"{searchQuery}"</p>
+                              </div>
+                            )
+                          )}
+                          {navigationLevel === 'yodhas' && (
+                            yodhasInDistrict.length > 0 ? (
+                              yodhasInDistrict.map(yodha => (
+                                <YodhaCard key={yodha.id} yodha={yodha} onClick={() => setViewingYodha(yodha)} />
+                              ))
+                            ) : (
+                              <div className="bg-white text-center p-12 rounded-xl shadow-lg">
+                                <p className="text-gray-500">No yodhas match your search query:</p>
+                                <p className="text-gray-700 font-medium mt-2">"{searchQuery}"</p>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {currentView === 'accounts' && (
+                <AccountsView 
+                  yodhas={yodhas} 
+                  transactions={transactions}
+                  onAddTransaction={handleAddTransaction}
+                  error={error}
+                  setError={setError}
+                />
+              )}
+
+              {currentView === 'analysis' && (
+                <AnalysisView yodhas={yodhas} />
+              )}
+            </div>
+          </div>
+        );
       }
-    };
 
-    const setupListeners = () => {
-      // Yodhas Listener
-      const yodhasQuery = query(collection(db, `/artifacts/${appId}/public/data/yodhas`));
-      onSnapshot(yodhasQuery, (snapshot) => {
-        yodhas = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        yodhas.sort((a, b) => (a.accusedName || '').localeCompare(b.accusedName || ''));
-        isLoading = false;
-        renderApp();
-      }, (err) => {
-        console.error("Yodhas Snapshot Error:", err);
-        setError("Failed to load yodhas.");
-        isLoading = false;
-        renderApp();
-      });
-
-      // Districts Listener
-      const districtsQuery = query(collection(db, `/artifacts/${appId}/public/data/districts`));
-      onSnapshot(districtsQuery, (snapshot) => {
-        districts = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        districts.sort((a, b) => a.name.localeCompare(b.name));
-        renderApp(); // Re-render if modal is open
-        if(isManagingDistricts) showModal(renderManageListModal('districts'));
-      });
-      
-      // States Listener
-      const statesQuery = query(collection(db, `/artifacts/${appId}/public/data/states`));
-      onSnapshot(statesQuery, (snapshot) => {
-        states = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        states.sort((a, b) => a.name.localeCompare(b.name));
-        renderApp();
-        if(isManagingStates) showModal(renderManageListModal('states'));
-      });
-      
-      // Categories Listener
-      const categoriesQuery = query(collection(db, `/artifacts/${appId}/public/data/categories`));
-      onSnapshot(categoriesQuery, (snapshot) => {
-        categories = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
-        categories.sort((a, b) => a.name.localeCompare(b.name));
-        renderApp();
-        if(isManagingCategories) showModal(renderManageListModal('categories'));
-      });
-      
-      // Transactions Listener
-      const txQuery = query(collection(db, `/artifacts/${appId}/public/data/transactions`));
-      onSnapshot(txQuery, (snapshot) => {
-        transactions = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, amount: parseFloat(doc.data().amount) || 0 }));
-        transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-        renderApp();
-      });
-    };
-
-    // --- Start the App ---
-    startApp();
-    renderApp(); // Initial render (shows login)
+      // --- Mount the React App ---
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
     
+    }); // --- End of window.onload wrapper ---
+
   </script>
 </body>
 </html>
